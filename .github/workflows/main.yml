@@ -1,0 +1,28 @@
+name: Automatic Backup
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Runs every 6 hours (adjust as needed)
+  push:
+    branches:
+      - main  # Trigger on any push to the main branch
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up R environment
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3.1'  # Change to your R version
+
+      - name: Commit changes
+        run: |
+          git config --global user.email "your-email@example.com"
+          git config --global user.name "your-github-username"
+          git add .
+          git commit -m "Automated backup $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+          git push origin main
