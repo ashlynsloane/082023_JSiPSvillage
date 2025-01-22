@@ -1,0 +1,17 @@
+sample_index,donor ,case_control,sex,origin
+js-2422,js-2422,JS,Male,fibroblast
+js-2423,js-2423,JS,Female,fibroblast
+js-2420,js-2420,JS,Female,PBMC
+js-2421,js-2421,JS,Male,fibroblast
+js-2424,js-2424,JS,Male,PBMC
+js-3388,js-3388,JS,Female,PBMC
+js-3389,js-3389,JS,Male,PBMC
+js-3392,js-3392,JS,Female,PBMC
+SCBB-1355_P13_MT_4_10_18,cw-20320,control,Female,PBMC
+CW20146_P15_MT_12-5-17,cw-20146,control,Female,PBMC
+CW20107_P13_DH_12-8-17,cw-20107,control,Female,PBMC
+SCBB-1356_P14_DH_4_10_18,cw-20324,control,Male,PBMC
+SCBB-1350_P13_MT_3_16_18,cw-20069,control,Male,PBMC
+CW20047_P12_MT_11-24-17,cw-20047,control,Male,PBMC
+SCBB-1409_P13_MT_3_27_18,cw-60365,control,Male,fibroblast
+CW20115_P14_DH_12-15-17,cw-20115,control,Female,PBMC
