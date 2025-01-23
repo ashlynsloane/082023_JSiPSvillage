@@ -1,0 +1,164 @@
+---
+title: "AS_00generate_seurat_obj"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+Set working directory with location of .Rproj
+
+- can either create new directory or use existing directory & create a new project within that
+- command tells here package where the root of the project is by specifying the location of an existing file within the project directory; makes it easier to reference files relative to the project without hardcoding paths
+- no need to manually set working directories across different systems & makes path handling easier in large projects
+
+```{r setup}
+here::i_am("202308_JSiPSvillage.Rproj")
+library(here)
+here()
+```
+
+Load Libraries: 
+- (qs): efficient saving & loading of R objects (e.g. data frames)
+- (tidyverse): collection of data science packages designed for data manipulation, visualization, modeling (e.g. ggplot2 [visualization], dplyr [data manipulation], readr [data import])
+- (Seurat): popular package for scRNA-seq - used for clustering, dimensionality reduction, visualization of single-cell transcriptomic data
+- (Matrix): useful for working with high-dimensional data, often used in scRNA-seq
+- (fs): provides functions to manipulate files & directories (create, delete, move, list)
+- (skimr): provides detailed summary of a dataset in a readable format
+- (reticulate): interface betwween R & Python
+- (data.table): faster alternatives to data.frame for data manipulation tasks (e.g. filtering, aggregating, joining large datasets)
+
+- Data import & processing: tidyverse, data.table, qs
+- Single-cell analysis: Seurat, Matrix
+- data exploration: skimr
+- file management: fs
+- Python integration: reticulate
+
+```{r}
+library(qs)
+library(tidyverse)
+library(Seurat)
+library(Matrix)
+library(fs)
+library(skimr) 
+library(reticulate)
+library(data.table)
+```
+
+Set folders & metadata
+1. define name for this specific analysis run (e.g. using limma-voom method - statistical approach for RNA-sq data analysis); helps organize output files & results under a specific identifier
+2. set input directory to the root directory of your R project, which was previously set using here::i_am()
+3. creates output directory for storing results specific to this analysis - ensures results for different analysis runs are stored in separate subfolders
+  - aka /path/to/your/project/attempt1_limmavoom/0_seurat-objects
+4. define full file paths to two important CSV files
+  - files_metadata.csv: contains info about sequencing data files (e.g. file names, conditions, groups)
+  - sample_metadata.csv: metadata about biological samples (e.g. patient IDs, treatments, conditions)
+5. read files_metadata.csv file into an R data frame named file_metadata
+  - function read_csv() is used for efficiently importing CSV files
+
+```{r}
+analysis_set <- c("attempt1_limmavoom")
+
+input_dir <- here()
+output_dir <- here(analysis_set, "0_seurat-objects")
+
+file_metadata_csv <- here(input_dir, "files_metadata.csv")
+metadata_csv <- here(input_dir, "sample_metadata.csv")
+
+file_metadata <- read_csv(file_metadata_csv)
+head(file_metadata)
+```
+
+Now, we need to see if a specific output directory exists, and if it doesn't, we'll create the directory
+*note: you can go into ashlynsloane in Finder and make these folders yourself, idk if you can have R do it for you but this seems to be the easiest way
+
+```{r}
+if (!dir.exists(output_dir)){
+  # if the output directory does not exist:
+  dir.create(output_dir) # Create the output directory
+} else {
+  # if the output directory already exists:
+  print("Output directory already exists")
+}
+```
+
+skipping this... because I don't think it's applicable right now
+
+READ IN FILE METADATA and choose relevant information for analysis -----------------------------------
+List of categorical variables to make factors
+categorical_vars <- c("case_control", "sex", "treatment_id", "short_treatment", "index_name", "short_index")
+
+List of village conditions (treatments, barcode indices, etc) to include
+You may not wish to/need to do this filtering at all, so you could just list everything.
+village_subset <- c("DMSO","SAG","CHIR")
+
+ filemetadata <- 
+   read_csv(file_metadata_csv) %>%
+   as_tibble() %>%
+   mutate_at(categorical_vars, factor) %>% #make all categories a factor
+   unite(short_treatment, short_index, col = "short_id", sep = "_", remove = FALSE) %>% # not necessarily relevant if you didn't have multiple 10x barcode pools
+   dplyr::filter(short_treatment %in% village_subset)
+-----------------------------------
+
+Now, we'll use the function custom_read_solo, which reads in data from a specific file, filters the metadata based on a unique identifier (short_id), and then reads the STARsolo output file corresponding to that identifier using the ReadSTARsolo() function
+
+Steps:         ### REVIEW THIS ###
+- Filters the rows in the filemetadata data frame where the short_id column matches the value passed as.short_id - this helps select the correct file paths for the specific data you want to read
+- Read the STARsolo output data file specified in the file_paths object; it uses the path_to_star_solo column from filemetadata to locate the data file, reading the file with the first column as features (genes, etc.) & ensuring that each feature is unique
+  - feature.column = 1: specifies that the first column in the STARsolo output file contains the feature names (typically gene names)
+  - unique.features = TRUE: ensures that only unique features (genes) are considered
+   
+```{r}
+custom_read_solo <- function(filemetadata, .short_id) {
+  file_paths <- filemetadata %>%
+    dplyr::filter(short_id == .short_id) # filters the file metadata to select rows where 'short_id'matches '.short_id'
+
+  # Reads the STARsolo file (a common output from STAR solo for RNA-seq data) using the filtered file paths
+  ReadSTARsolo(file_paths$path_to_star_solo[[1]], feature.column = 1, unique.features = TRUE)
+}
+```
+
+Now, let's create the Seurat object from the counts data generated by ReadSTARsolo using the variable "gex"
+- a Seurat object is a representation of single-cell expression in R; stores all information about a datset including 
+  - expression data: stored in assay-class objects (e.g. RNA-seq data)
+  - dimensionality reduction: stored in DimReduc-class objects, which are transformations of the expression data
+  - annotations: additional metadata about the cells & features
+  - analyses: results from analyses performed on the data
+
+- we want to read the STARsolo data from the file paths in file_metadata$path_to_star_solo, which presumably contains the paths to the STARsolo output files
+  - similarly to the previous function,it specifies the feature column & ensures unique features
+  
+- counts = ...: this argument provides the counts data, which is the output from ReadSTARsolo
+  - counts data = raw data obtained from high-throughput sequencing experiments (e.g. RNA-seq)
+    - each entry represents the number of times a particular feature (e.g. gene or transcript) is detected across a set of samples or cells -- data is typically in the form of a count matrix
+      - features (rows): usually genes, transcripts, or other genomic elements like exons or promoters
+      - samples/cells (columns): different samples or individual cells in the experiment
+      - values: number of sequencing reads (or counts) that map to each gene in each cell
+        - in scRNA-seq, these counts represent how many mRNA molecules from each gene were detected in each individual cell
+        - in bulk RNA-seq (where RNA from multiple cells is pooled), counts represent the total number of mRNA molecules from each gene across all cells in the sample
+- assay = "RNA": specifies that the assay type is RNA
+- min.cells = 0, min.features = 0: these arguments specify that there is no minimum number of cells or features required for a feature to be included in the analysis (but you could filter this if needed)
+- project = "JS": labels this Seurat object as part of the project named "JS"
+
+- this is part of an analysis pipeline where STARsolo (a tool for processing scRNA-seq data) output is read in, and the data is converted into a format (Seurat object) suitable for downstream analysis like clustering, visualization, etc
+
+The Seurat object "gex" will contain:
+  - the expression counts for each gene (rows) and cell (columns)
+  - metadata about the samples and cells, which can be added later
+  - assay info (RNA in this case)
+  
+After creating the Seurat object, you can perform a wide range of analysis & visualization tasks like:
+  - Quality control (i.e., filtering cells & genes)
+  - Normalization of gene expression
+  - Clustering cells
+  - Dimensionality reduction (e.g. PCA, UMAP)
+
+```{r}
+gex <- CreateSeuratObject(
+  counts = ReadSTARsolo(file_metadata$path_to_star_solo, feature.column = 1, unique.features = TRUE),
+  assay = "RNA",
+  min.cells = 0,
+  min.features = 0,
+  project = "JS"
+)
+```
+
+

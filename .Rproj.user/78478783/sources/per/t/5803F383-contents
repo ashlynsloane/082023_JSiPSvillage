@@ -1,0 +1,142 @@
+#Seurat Object Generation
+#Rachel Fox, 2024
+
+#SET WORKING DIRECTORY with location of R Project---------------------------
+here::i_am("082023_JS_ips_village.Rproj")
+library(here)
+here()
+
+#Load libraries-------------------------------------------------------------
+library(qs)
+library(tidyverse)
+library(Seurat)
+library(Matrix)
+library(fs)
+library(skimr) 
+library(reticulate)
+library(data.table)
+
+
+#SET FOLDERS AND METADATA------------------------------------------------------
+
+#Choose a name for your analysis (you will probably do this multiple times with different goals)
+analysis_set <- c("attempt2_limmavoom")
+
+#Set input and output (for this first script, you can set your input to the overall working directory)
+input_dir <- here()
+output_dir <- here(analysis_set, "0_seurat-objects")
+
+file_metadata_csv <- here(input_dir, "files_metadata.csv")
+donor_metadata_csv <- here(input_dir, "sample_metadata.csv")
+
+file_metadata <- read_csv(file_metadata_csv)
+
+
+#Create output folders
+
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir)
+  
+} else{
+  print("Output directory already exists")
+}
+
+
+# READ IN FILE METADATA and choose relevant information for analysis -----------------------------------
+
+
+#List of categorical variables to make factors
+#categorical_vars <- c("case_control", "sex", "treatment_id", "short_treatment", "index_name", "short_index")
+
+#List of village conditions (treatments, barcode indices, etc) to include
+#You may not wish to/need to do this filtering at all, so you could just list everything.
+#village_subset <- c("DMSO","SAG","CHIR")
+
+# filemetadata <- 
+#   read_csv(file_metadata_csv) %>%
+#   as_tibble() %>%
+#   mutate_at(categorical_vars, factor) %>% #make all categories a factor
+#   unite(short_treatment, short_index, col = "short_id", sep = "_", remove = FALSE) %>% # not necessarily relevant if you didn't have multiple 10x barcode pools
+#   dplyr::filter(short_treatment %in% village_subset)
+
+#Function to read in matrices and make them sparse------------------------------------
+
+custom_read_solo <- function(filemetadata, .short_id) {
+  file_paths <- filemetadata %>%
+    dplyr::filter(short_id == .short_id) # if you don't have a village short id, you can use any unique identifier
+  ReadSTARsolo(file_paths$path_to_star_solo[[1]], feature.column = 1, unique.features = TRUE)
+}
+
+
+gex <- CreateSeuratObject( counts = ReadSTARsolo(file_metadata$path_to_star_solo, feature.column = 1, unique.features = TRUE), assay = "RNA", min.cells =0, min.features = 0, project = "JS")
+
+
+#Merge all the single cell count data from each condition into one Seurat Object.------
+# This function usually expects merge(x, y), but you can combine more than two things by including a list in merge(x = c(item1), y = c(item2, item3)
+
+# gex <- merge(
+#   x = CreateSeuratObject(counts = custom_read_solo(filemetadata, "DMSO_A1"), assay = "RNA",  min.cells = 0, min.features = 0, project = "DMSOA1"),
+#   y = c(CreateSeuratObject(counts = custom_read_solo(filemetadata, "DMSO_A2"), assay = "RNA",  min.cells = 0, min.features = 0, project = "DMSOA2" ), 
+#         CreateSeuratObject(counts = custom_read_solo(filemetadata, "CHIR_A3"), assay = "RNA",  min.cells = 0, min.features = 0, project = "CHIRA3"),
+#         CreateSeuratObject(counts = custom_read_solo(filemetadata, "CHIR_A4"), assay = "RNA",  min.cells = 0, min.features = 0, project = "CHIRA4"),
+#         CreateSeuratObject(counts = custom_read_solo(filemetadata, "SAG_A5"), assay = "RNA",  min.cells = 0, min.features = 0, project = "SAGA5"),
+#         CreateSeuratObject(counts = custom_read_solo(filemetadata, "SAG_A6"), assay = "RNA",  min.cells = 0, min.features = 0, project = "SAGA6")),
+#   add.cell.ids = c("DMSO_A1", "DMSO_A2", "CHIR_A3", "CHIR_A4", "SAG_A5", "SAG_A6"))
+
+
+# Combine Seurat Object with cell metadata -----------------------------------
+
+donor_metadata <- read_csv(donor_metadata_csv)
+categorical_cell_vars <- c("sample_index", "donor", "case_control", "sex", "origin")
+
+(donor_metadata <- 
+  read_csv(donor_metadata_csv) %>%
+  as_tibble() %>%
+  mutate_at(categorical_cell_vars, factor))# %>% 
+  # rename(case_ctl = genotype)) # only relevant to 16p but maybe you want to rename something
+
+(donor_label <- 
+  donor_metadata %>%
+  group_by(donor) %>%
+  summarise() %>%
+  mutate(donornum = seq_along(donor), # Here I am just generating a list of numbers for each donor so we can randomize them at some point
+         donor_text = "Donor") %>%
+  unite("donorlabel", c("donor_text", "donornum"), sep = " ", remove = TRUE))
+
+donor_metadata <- 
+  full_join(donor_metadata, donor_label) %>%
+  mutate(donorlabel = factor(donorlabel, levels = c("Donor 1","Donor 2","Donor 3",
+                                                    "Donor 4","Donor 5","Donor 6",
+                                                    "Donor 7","Donor 8","Donor 9",
+                                                    "Donor 10","Donor 11","Donor 12",
+                                                    "Donor 13","Donor 14","Donor 15",
+                                                    "Donor 16"))) # this is annoying, but just call levels(donorlabel) and then make a list thats in order
+
+
+#Extract and Clean Metadata to prepare to add and object------------------------
+# This looks at the donor map, ie which barcode belongs to which donor, 
+# and uses it to add a unique treatment specific tag to the end of the barcodes, 
+# which will match the seurat object barcodes.
+
+# all_barcodes_donors <- 
+#   map(filemetadata$path_to_donormap) 
+#        function(donorpath) {
+#          fread(donorpath, header = TRUE, stringsAsFactors = FALSE) %>%
+#            as_tibble()# %>%
+#           # mutate(expt = short_id) %>%
+#           # unite(expt, cell, col = "cellid", sep = "_", remove = FALSE) %>%
+#           # unite(bestSample, expt, col = "sample_index", sep = ".", remove = FALSE)
+#            }) %>%
+#   list_rbind() %>%
+#   left_join(.,donor_metadata, by = "sample_index") %>%
+#   dplyr::select(-cell) %>%
+#   column_to_rownames("cellid")
+
+donor_map <- read_tsv(file_metadata$path_to_donormap) %>%
+  left_join(.,donor_metadata, by = c("bestSample" = "sample_index")) %>%
+  column_to_rownames("cell")
+
+gex <- AddMetaData(gex, donor_map)
+
+# SAVE your Seurat Object -------------------------
+qsave(gex, here(output_dir, "00-seuratobj_geneexpressionmatrix.qs"))

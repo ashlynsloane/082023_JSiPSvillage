@@ -1,0 +1,149 @@
+---
+title: "LS CC regression nb"
+output: html_notebook
+---
+
+Set working directory & load libraries
+
+```{r setup}
+here::i_am("082023_JS_ips_village.Rproj")
+library(here)
+here()
+
+set.seed(1234)
+
+library(qs)
+library(tidyverse)
+library(SingleCellExperiment)
+library(Seurat)
+library(scCustomize)
+library(scater)
+library(ggcorrplot)
+library(fs)
+library(skimr)
+library(reticulate)
+library(data.table)
+```
+
+Set the WD and analysis info
+
+```{r}
+analysis_set <- c("attempt3_limmavoom_removecluster")
+input_dir <- here(analysis_set, "0_seurat-objects")
+output_dir <-  here(analysis_set, "2_res0.2-dim-plots-precellcycle")
+
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir)
+}else{
+  print("Output directory already exists")
+}
+```
+
+Assign the donor palette
+
+```{r}
+donor_palette <- 
+  c("#ae502a", "#e1ab33","#75b235","#bf9fe1","#b6be38","#6751b6",
+    "#478734","#dc8331","#40c0bc","#d94b2d","#5e91e3",
+    "#435ea7","#af79c3","#a4437a","#d33b58",
+    "#d2427a")
+```
+
+Read in GEX object and generate elbow plot
+
+```{r}
+gex <- qread(here(input_dir, "01-seuratobj_gexmtx_clusters&UMAP.qs"))
+ElbowPlot(gex)
+ggsave(here(output_dir, "gex_elbowplot_precellcyc.png"), width = 4, height = 4)
+
+```
+
+Create cluster plots
+
+```{r}
+DimPlot(gex, size = 0.5)
+ggsave(here(output_dir, "gex.png"), width = 4, height = 4)
+
+DimPlot(gex, group.by = "Phase", size = 0.5 ) + 
+  labs(title = "Cell Cycle Phase")
+ggsave(here(output_dir, "gex_ccphase.png"), width = 4, height = 4)
+
+DimPlot(gex, group.by = "origin", size = 0.5 ) + 
+  labs(title = "Cell Origin")
+ggsave(here(output_dir, "gex_origin.png"), width = 5, height = 4)
+
+DimPlot(gex, group.by = "case_control", size = 0.5 ) + 
+  labs(title = "Case/Control Status")
+ggsave(here(output_dir, "gex_case_control.png"), width = 4, height = 4)
+
+DimPlot(gex, group.by = "sex", size = 0.5 ) + 
+  labs(title = "Sex")
+ggsave(here(output_dir, "gex_sex.png"), width = 4, height = 4)
+
+DimPlot(gex, group.by = "donor", size = 0.5 ) + scale_color_manual("Donor", values = donor_palette) + 
+  labs(title = "Donor")
+ggsave(here(output_dir, "gex_donor.png"), width = 4, height = 4)
+
+DimPlot(gex, group.by = "case_control", size = 0.5 ) + facet_grid(~case_control) + 
+  labs(title = "Case/Control Status")
+ggsave(here(output_dir, "gex_facet_case_control.png"), width = 10, height = 4)
+
+DimPlot(gex, group.by = "donor", size = 0.5 ) + facet_wrap(~donor) + NoLegend() + scale_color_manual("Donor", values = donor_palette) + 
+  labs(title = "Donor")
+ggsave(here(output_dir, "gex_facet_donor.png"), width = 10, height = 10)
+```
+
+Remove cluster 2
+
+```{r}
+gex_rmCluster2 <- subset(gex, subset = seurat_clusters != 2 & donor != "cw-20115")
+```
+
+Redo cluster plots with no cluster 2
+
+```{r}
+
+donor_palette <- 
+  c("#e1ab33","#75b235","#b6be38","#6751b6",
+    "#478734","#dc8331","#40c0bc","#d94b2d","#5e91e3",
+    "#435ea7","#af79c3","#a4437a","#d33b58",
+    "#d2427a","#ae502a","#bf9fe1")
+
+DimPlot(gex_rmCluster2, size = 0.5)
+ggsave(here(output_dir, "gex_rmCluster2.png"), width = 4, height = 4)
+
+DimPlot(gex_rmCluster2, group.by = "Phase", size = 0.5 ) + 
+  labs(title = "Cell Cycle Phase")
+ggsave(here(output_dir, "gex_rmCluster2_ccphase.png"), width = 4, height = 4)
+
+DimPlot(gex_rmCluster2, group.by = "origin", size = 0.5 ) + 
+  labs(title = "Cell Origin")
+ggsave(here(output_dir, "gex_rmCluster2_origin.png"), width = 5, height = 4)
+
+DimPlot(gex_rmCluster2, group.by = "case_control", size = 0.5 ) + 
+  labs(title = "Case/Control Status")
+ggsave(here(output_dir, "gex_rmCluster2_case_control.png"), width = 4, height = 4)
+
+DimPlot(gex_rmCluster2, group.by = "sex", size = 0.5 ) + 
+  labs(title = "Sex")
+ggsave(here(output_dir, "gex_rmCluster2_sex.png"), width = 4, height = 4)
+
+DimPlot(gex_rmCluster2, group.by = "donor", size = 0.5 ) + scale_color_manual("Donor", values = donor_palette) + 
+  labs(title = "Donor")
+ggsave(here(output_dir, "gex_rmCluster2_donor.png"), width = 4, height = 4)
+
+DimPlot(gex_rmCluster2, group.by = "case_control", size = 0.5 ) + facet_grid(~case_control) + 
+  labs(title = "Case/Control Status")
+ggsave(here(output_dir, "gex_rmCluster2_facet_case_control.png"), width = 10, height = 4)
+
+DimPlot(gex_rmCluster2, group.by = "donor", size = 0.5 ) + facet_wrap(~donor) + NoLegend() + scale_color_manual("Donor", values = donor_palette) + 
+  labs(title = "Donor")
+ggsave(here(output_dir, "gex_rmCluster2_facet_donor.png"), width = 10, height = 10)
+```
+
+Save GEX to perform CC regression (next script, script 025)
+
+```{r}
+qsave(gex_rmCluster2, here(input_dir, "02-seuratobj_gexmtx_pca_precellcycle_diff.qs"))
+
+```
