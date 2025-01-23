@@ -26,3 +26,6 @@ jobs:
           git add .
           git commit -m "Automated backup $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
           git push origin main
+
+           env:
+    TOKEN_20250123: ${{ secrets.TOKEN_20250123 }}
